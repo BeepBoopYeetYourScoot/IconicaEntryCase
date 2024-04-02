@@ -1,7 +1,7 @@
 import abc
 import os
 import pathlib
-from typing import Type, List, Iterable
+from typing import Type, List, Iterable, Dict, Tuple
 
 import docxtpl
 import loguru
@@ -47,47 +47,55 @@ class DatasetCollector:
         return self._documents
 
 
-class DocumentGenerator:
+class DocumentConnector:
 
     def __init__(
         self,
-        heading_template: DocxTemplate,
-        *template_paths: Iterable[DocxTemplate],
+        ordered_templates: Dict[pathlib.Path, int],
     ):
-        self._heading = heading_template
-        self._template_paths: Iterable[pathlib.Path] = [*template_paths]
-
-    def generate_document(self):
-        for doc_path in self._template_paths:
-            self._heading.new_subdoc(doc_path)
-        return self._heading
+        self._ordered_templates = ordered_templates
 
     @property
-    def heading(self):
-        return self._heading
+    def connect_document_parts(self):
+        loguru.logger.debug(
+            f"Connecting documents: \n {self._ordered_templates=}"
+        )
+        templates = self._get_sorted_templates()
+        header_num, header_path = templates.pop()
+        header_template = DocxTemplate(header_path)
+
+        for num, doc_path in templates:
+            header_template.new_subdoc(doc_path)
+        return self.header_template
 
     @property
     def template_paths(self):
-        return self._template_paths
+        return [*self._ordered_templates.keys()]
+
+    def _get_sorted_templates(self):
+        turned = {v: k for k, v in self._ordered_templates}
+        zipped = [*zip(turned.items())]
+        zipped.sort(key=lambda x: x[0])
+        return zipped
 
 
 class SynthaxValidator:
 
-    def __init__(self, template: DocxTemplate, template_data):
+    def __init__(self, template: DocxTemplate, template_data: dict):
         self._template = template
         self._template_data = template_data
 
     def validate_synthax(self):
         loguru.logger.debug(f"Validating syntax for {self._template=}")
         try:
-            self._false_render_template()
+            self._render_template()
         except TemplateSyntaxError as e:
             loguru.logger.error(
                 f"Got error while validating " f"{self._template=}"
             )
             raise ValueError(e)
 
-    def _false_render_template(self):
+    def _render_template(self):
         self._template.render(self._template_data)
 
 
@@ -105,7 +113,7 @@ class AbstractTemplateBuilderFactory(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def create_document_generator(self) -> DocumentGenerator:
+    def create_document_generator(self) -> Type[DocumentConnector]:
         pass
 
     @abc.abstractmethod
@@ -113,7 +121,7 @@ class AbstractTemplateBuilderFactory(abc.ABC):
         pass
 
 
-class BuilderFactory(AbstractTemplateBuilderFactory):
+class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
     def __init__(self, dataset: dict, ordered_templates: dict):
         self._initial_dataset = dataset
         self._ordered_templates = ordered_templates
@@ -121,12 +129,24 @@ class BuilderFactory(AbstractTemplateBuilderFactory):
 
     def create_dataset_collector(self, template_path) -> DatasetCollector:
         loguru.logger.debug(
-            f"Creting DatasetCollector for " f"{self._initial_dataset=}"
+            f"Creting DatasetCollector for {self._initial_dataset=}"
         )
+        if not self._initial_dataset:
+            raise ValueError(f"Got empty dataset for {self=}")
         return DatasetCollector(template_path, self._initial_dataset)
+
+    def create_document_generator(self) -> DocumentConnector:
+        loguru.logger.debug(
+            f"Creating DocumentConnector for {self._initial_dataset=}"
+        )
+        if not self._ordered_templates:
+            raise ValueError(f"Got no templates for {self=}")
+        return DocumentConnector(self._ordered_templates)
 
     def form_templates(self):
         loguru.logger.debug(f"Assigning template for {self=}")
+        if not self._ordered_templates:
+            raise ValueError(f"Got no templates for {self=}")
         for template_path, ordering in self._ordered_templates.items():
             assert isinstance(template_path, pathlib.Path)
             assert template_path.is_file()
