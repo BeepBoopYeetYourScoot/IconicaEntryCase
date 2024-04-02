@@ -8,39 +8,48 @@ import loguru
 from docxtpl import DocxTemplate
 from jinja2 import TemplateSyntaxError
 
+from template_builder.fixtures import (
+    HEADING_1_VARS,
+    HEADING_2_VARS,
+    BODY_1_VARS,
+)
+
 
 class DatasetCollector:
 
-    def __init__(self, template_path: pathlib.Path, dataset_vars: dict):
-        if not isinstance(dataset_vars, dict):
+    def __init__(self, initial_dataset: dict):
+        """
+        Uses keys in initial dataset to create template collection
+        :param initial_dataset:
+        """
+        if not isinstance(initial_dataset, dict):
             raise ValueError(
-                f"Expected {dict=}, got {type(dataset_vars)=} instead"
+                f"Expected {dict=}, got {type(initial_dataset)=} instead"
             )
-        self._template = DocxTemplate(template_path)
-        self._dataset_vars = dataset_vars
+        self._initial_dataset = initial_dataset
         self._documents = []
+        self._data = [*initial_dataset.values()]
 
-    def collect(self) -> List[DocxTemplate]:
+    def collect(self) -> Tuple[List[DocxTemplate], List[dict]]:
         loguru.logger.debug(f"Collecting templates for {self=}")
         self._documents = [
-            DocxTemplate(file_path) for file_path, count in self._dataset_vars
+            DocxTemplate(file_path)
+            for file_path in self._initial_dataset.keys()
         ]
         loguru.logger.debug(
-            f"Got {len(self._documents)=} and " f"{len(self._dataset_vars)=}"
+            f"Got {len(self._documents)=} and "
+            f"{len(self._initial_dataset)=}"
         )
-        return self._documents
-
-    @property
-    def template(self):
-        return self._template
+        loguru.logger.debug(f"Returning with {self._data=}")
+        return self._documents, self._data
 
     @property
     def original_file_paths(self) -> List[pathlib.Path]:
-        return list(self._dataset_vars.keys())
+        return list(self._initial_dataset.keys())
 
     @property
     def ordering(self) -> List[int]:
-        return list(self._dataset_vars.values())
+        return list(self._initial_dataset.values())
 
     @property
     def documents(self):
@@ -55,8 +64,7 @@ class DocumentConnector:
     ):
         self._ordered_templates = ordered_templates
 
-    @property
-    def connect_document_parts(self):
+    def connect_document_parts(self) -> DocxTemplate:
         loguru.logger.debug(
             f"Connecting documents: \n {self._ordered_templates=}"
         )
@@ -66,7 +74,7 @@ class DocumentConnector:
 
         for num, doc_path in templates:
             header_template.new_subdoc(doc_path)
-        return self.header_template
+        return header_template
 
     @property
     def template_paths(self):
@@ -109,15 +117,15 @@ class AbstractTemplateBuilderFactory(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def create_dataset_collector(self, template_path) -> DatasetCollector:
+    def create_dataset_collector(self) -> DatasetCollector:
         pass
 
     @abc.abstractmethod
-    def create_document_generator(self) -> Type[DocumentConnector]:
+    def create_document_connector(self) -> Type[DocumentConnector]:
         pass
 
     @abc.abstractmethod
-    def create_synthax_validator(self) -> SynthaxValidator:
+    def create_synthax_validator(self, template, data) -> SynthaxValidator:
         pass
 
 
@@ -127,21 +135,35 @@ class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
         self._ordered_templates = ordered_templates
         self._template_collection = []
 
-    def create_dataset_collector(self, template_path) -> DatasetCollector:
+    def generate_template(self, *args, **kwargs) -> docxtpl.DocxTemplate:
+        collector = self.create_dataset_collector()
+        connector = self.create_document_connector()
+        templates, data = collector.collect()
+
+        for template, single_data in zip(templates, data):
+            loguru.logger.debug(f"Valitating {template=} with {single_data=}")
+            validator = self.create_synthax_validator(template, single_data)
+            validator.validate_synthax()
+        return connector.connect_document_parts()
+
+    def create_dataset_collector(self) -> DatasetCollector:
         loguru.logger.debug(
-            f"Creting DatasetCollector for {self._initial_dataset=}"
+            f"Creating DatasetCollector for {self._initial_dataset=}"
         )
         if not self._initial_dataset:
             raise ValueError(f"Got empty dataset for {self=}")
-        return DatasetCollector(template_path, self._initial_dataset)
+        return DatasetCollector(self._initial_dataset)
 
-    def create_document_generator(self) -> DocumentConnector:
+    def create_document_connector(self) -> DocumentConnector:
         loguru.logger.debug(
             f"Creating DocumentConnector for {self._initial_dataset=}"
         )
         if not self._ordered_templates:
             raise ValueError(f"Got no templates for {self=}")
         return DocumentConnector(self._ordered_templates)
+
+    def create_synthax_validator(self, template, data) -> SynthaxValidator:
+        return SynthaxValidator(template, data)
 
     def form_templates(self):
         loguru.logger.debug(f"Assigning template for {self=}")
@@ -167,5 +189,26 @@ class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
         return [*self._ordered_templates.values()]
 
 
+FIXTURE_FOLDER = pathlib.Path("subdocs_fixtures")
+DATASET = {
+    "subdocs_fixtures/header_1.docx": HEADING_1_VARS,
+    "subdocs_fixtures/header_2.docx": HEADING_2_VARS,
+    "subdocs_fixtures/body_1.docx": BODY_1_VARS,
+}
+ORDERED_TEMPLATES = {
+    "subdocs_fixtures/header_1.docx": 0,
+    "subdocs_fixtures/header_2.docx": 1,
+    "subdocs_fixtures/body_1.docx": 2,
+}
+
+DATASETS = [(DATASET, ORDERED_TEMPLATES), (None, None)]
+
+
+def main():
+    for dataset, templates in DATASETS:
+        factory = TemplateBuilderFactory(dataset, templates)
+        factory.generate_template()
+
+
 if __name__ == "__main__":
-    pass
+    main()
