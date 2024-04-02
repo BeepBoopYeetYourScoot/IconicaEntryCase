@@ -15,7 +15,7 @@ HEADING_2_VARS = {
 }
 BODY_1_VARS = {
     "block_1": "Государственная корпорация ",
-    "company_var": "{company_name}",
+    "company_var": "'{company_name}'",
     "company_address": "{specified_address}",
     "block_2": ", являющаяся на основании решения Арбитражного суда",
     "court_name": "{official_court}",

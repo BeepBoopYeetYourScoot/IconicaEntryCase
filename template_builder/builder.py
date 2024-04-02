@@ -1,7 +1,7 @@
 import abc
 import os
 import pathlib
-from typing import Type, List, Iterable, Dict, Tuple
+from typing import Type, List, Iterable, Dict, Tuple, Union
 
 import docxtpl
 import loguru
@@ -44,6 +44,10 @@ class DatasetCollector:
         return self._documents, self._data
 
     @property
+    def dataset(self):
+        return self._initial_dataset
+
+    @property
     def original_file_paths(self) -> List[pathlib.Path]:
         return list(self._initial_dataset.keys())
 
@@ -63,28 +67,51 @@ class DocumentConnector:
         ordered_templates: Dict[pathlib.Path, int],
     ):
         self._ordered_templates = ordered_templates
+        self._template_collection = []
 
-    def connect_document_parts(self) -> DocxTemplate:
+    def connect_document_parts(
+        self, dataset: Dict[Union[pathlib.Path, str], dict]
+    ) -> DocxTemplate:
         loguru.logger.debug(
             f"Connecting documents: \n {self._ordered_templates=}"
         )
         templates = self._get_sorted_templates()
-        header_num, header_path = templates.pop()
-        header_template = DocxTemplate(header_path)
+        header_template, header_path = self._render_header(dataset, templates)
 
-        for num, doc_path in templates:
-            header_template.new_subdoc(doc_path)
+        rendered = self._render_templates(dataset, templates, header_path)
+        for template in rendered:
+            header_template.new_subdoc(template)
         return header_template
 
-    @property
-    def template_paths(self):
-        return [*self._ordered_templates.keys()]
-
-    def _get_sorted_templates(self):
-        turned = {v: k for k, v in self._ordered_templates}
-        zipped = [*zip(turned.items())]
+    def _get_sorted_templates(self) -> List[str]:
+        loguru.logger.debug(f"Sorting templates: {self._ordered_templates=}")
+        turned = {v: k for k, v in self._ordered_templates.items()}
+        zipped = [*zip(list(turned.keys()), list(turned.values()))]
         zipped.sort(key=lambda x: x[0])
-        return zipped
+        return [val for _, val in zipped]
+
+    def get_dataset_data_ordering(self, dataset: dict):
+        sorted_templates = self._get_sorted_templates()
+        for file in sorted_templates:
+            assert file in dataset
+        return {tmpl: dataset[tmpl] for tmpl in sorted_templates}
+
+    def _render_header(self, dataset, templates) -> Tuple[DocxTemplate, str]:
+        header_path = templates.copy().pop()
+        header_vars = dataset.copy().pop(header_path)
+        header_template = DocxTemplate(header_path)
+        header_template.render(header_vars)
+        return header_template, header_path
+
+    @staticmethod
+    def _render_templates(dataset, templates, header_path):
+        dataset = dataset.copy().pop(header_path)
+        templates = templates.copy().pop(header_path)
+        rendered = [
+            DocxTemplate(template).render(dataset.pop(template))
+            for template in templates
+        ]
+        return rendered
 
 
 class SynthaxValidator:
@@ -92,9 +119,11 @@ class SynthaxValidator:
     def __init__(self, template: DocxTemplate, template_data: dict):
         self._template = template
         self._template_data = template_data
+        loguru.logger.debug(f"{self._template=}")
+        loguru.logger.debug(f"{self._template_data=}")
 
     def validate_synthax(self):
-        loguru.logger.debug(f"Validating syntax for {self._template=}")
+        assert isinstance(self._template, DocxTemplate)
         try:
             self._render_template()
         except TemplateSyntaxError as e:
@@ -133,7 +162,6 @@ class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
     def __init__(self, dataset: dict, ordered_templates: dict):
         self._initial_dataset = dataset
         self._ordered_templates = ordered_templates
-        self._template_collection = []
 
     def generate_template(self, *args, **kwargs) -> docxtpl.DocxTemplate:
         collector = self.create_dataset_collector()
@@ -143,8 +171,11 @@ class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
         for template, single_data in zip(templates, data):
             loguru.logger.debug(f"Valitating {template=} with {single_data=}")
             validator = self.create_synthax_validator(template, single_data)
-            validator.validate_synthax()
-        return connector.connect_document_parts()
+            try:
+                validator.validate_synthax()
+            except ValueError as e:
+                loguru.logger.info(e)
+        return connector.connect_document_parts(self._initial_dataset)
 
     def create_dataset_collector(self) -> DatasetCollector:
         loguru.logger.debug(
@@ -165,21 +196,6 @@ class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
     def create_synthax_validator(self, template, data) -> SynthaxValidator:
         return SynthaxValidator(template, data)
 
-    def form_templates(self):
-        loguru.logger.debug(f"Assigning template for {self=}")
-        if not self._ordered_templates:
-            raise ValueError(f"Got no templates for {self=}")
-        for template_path, ordering in self._ordered_templates.items():
-            assert isinstance(template_path, pathlib.Path)
-            assert template_path.is_file()
-            template = DocxTemplate(template_path)
-            self._template_collection.append(template)
-        return self._template_collection
-
-    @property
-    def template_collection(self):
-        return self._template_collection
-
     @property
     def template_paths(self):
         return [*self._ordered_templates.keys()]
@@ -191,23 +207,25 @@ class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
 
 FIXTURE_FOLDER = pathlib.Path("subdocs_fixtures")
 DATASET = {
-    "subdocs_fixtures/header_1.docx": HEADING_1_VARS,
-    "subdocs_fixtures/header_2.docx": HEADING_2_VARS,
+    "subdocs_fixtures/heading_1.docx": HEADING_1_VARS,
+    "subdocs_fixtures/heading_2.docx": HEADING_2_VARS,
     "subdocs_fixtures/body_1.docx": BODY_1_VARS,
 }
 ORDERED_TEMPLATES = {
-    "subdocs_fixtures/header_1.docx": 0,
-    "subdocs_fixtures/header_2.docx": 1,
+    "subdocs_fixtures/heading_1.docx": 0,
+    "subdocs_fixtures/heading_2.docx": 1,
     "subdocs_fixtures/body_1.docx": 2,
 }
 
-DATASETS = [(DATASET, ORDERED_TEMPLATES), (None, None)]
+DATASETS = [(DATASET, ORDERED_TEMPLATES)]
+RESULT_FILENAME = "factory_result.docx"
 
 
 def main():
     for dataset, templates in DATASETS:
         factory = TemplateBuilderFactory(dataset, templates)
-        factory.generate_template()
+        result = factory.generate_template()
+        result.save(RESULT_FILENAME)
 
 
 if __name__ == "__main__":
