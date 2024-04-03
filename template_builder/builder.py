@@ -20,7 +20,6 @@ class DatasetCollector:
     def __init__(self, initial_dataset: dict):
         """
         Uses keys in initial dataset to create template collection
-        :param initial_dataset:
         """
         if not isinstance(initial_dataset, dict):
             raise ValueError(
@@ -66,6 +65,9 @@ class DocumentConnector:
         self,
         ordered_templates: Dict[pathlib.Path, int],
     ):
+        """
+        Connects together multiple templates
+        """
         self._ordered_templates = ordered_templates
         self._template_collection = []
 
@@ -82,19 +84,7 @@ class DocumentConnector:
 
         for template_data in ordered_dataset:
             header_template.new_subdoc(template_data[0])
-
-        # info = {}
-        # for doc, data in dataset.items():
-        #     info.update(data)
-        # header_template.render(dataset["subdocs_fixtures/body_1.docx"])
         return header_template
-
-    def _get_sorted_templates(self) -> List[str]:
-        loguru.logger.debug(f"Sorting templates: {self._ordered_templates=}")
-        turned = {v: k for k, v in self._ordered_templates.items()}
-        zipped = [*zip(list(turned.keys()), list(turned.values()))]
-        zipped.sort(key=lambda x: x[0])
-        return [val for _, val in zipped]
 
     def connect_dataset_and_ordering(self, dataset):
         ordered = self._ordered_templates.copy()
@@ -167,7 +157,9 @@ class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
                 validator.validate_synthax()
             except ValueError as e:
                 loguru.logger.info(e)
-        return connector.connect_document_parts(self._initial_dataset)
+        connected_doc = connector.connect_document_parts(self._initial_dataset)
+        connected_doc.render(DATASET)
+        return connected_doc
 
     def create_dataset_collector(self) -> DatasetCollector:
         loguru.logger.debug(
