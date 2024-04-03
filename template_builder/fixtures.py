@@ -1,3 +1,5 @@
+import pathlib
+
 from docxtpl import DocxTemplate
 
 HEADING_1_VARS = {
@@ -23,6 +25,21 @@ BODY_1_VARS = {
 BODY_2_VARS = {"tablerowa": ["a", "b", "c"]}
 BOTTOM_1_VARS = {}
 BOTTOM_2_VARS = {}
+
+FIXTURE_FOLDER = pathlib.Path("subdocs_fixtures")
+DATASET = {
+    "subdocs_fixtures/heading_1.docx": HEADING_1_VARS,
+    "subdocs_fixtures/heading_2.docx": HEADING_2_VARS,
+    "subdocs_fixtures/body_1.docx": BODY_1_VARS,
+}
+ORDERED_TEMPLATES = {
+    "subdocs_fixtures/heading_1.docx": 0,
+    "subdocs_fixtures/heading_2.docx": 1,
+    "subdocs_fixtures/body_1.docx": 2,
+}
+
+DATASETS = [(DATASET, ORDERED_TEMPLATES)]
+RESULT_FILENAME = "factory_result.docx"
 
 TEMPLATE_FILENAME = "subdocs_fixtures/heading_1.docx"
 RESULT_FILENAME = "result.docx"

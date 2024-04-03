@@ -12,6 +12,8 @@ from template_builder.fixtures import (
     HEADING_1_VARS,
     HEADING_2_VARS,
     BODY_1_VARS,
+    DATASETS,
+    RESULT_FILENAME,
 )
 
 
@@ -25,6 +27,7 @@ class DatasetCollector:
             raise ValueError(
                 f"Expected {dict=}, got {type(initial_dataset)=} instead"
             )
+        assert len(initial_dataset) > 0
         self._initial_dataset = initial_dataset
         self._documents = []
         self._data = [*initial_dataset.values()]
@@ -158,7 +161,7 @@ class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
             except ValueError as e:
                 loguru.logger.info(e)
         connected_doc = connector.connect_document_parts(self._initial_dataset)
-        connected_doc.render(DATASET)
+        # connected_doc.render(DATASET)
         return connected_doc
 
     def create_dataset_collector(self) -> DatasetCollector:
@@ -187,22 +190,6 @@ class TemplateBuilderFactory(AbstractTemplateBuilderFactory):
     @property
     def template_ordering(self):
         return [*self._ordered_templates.values()]
-
-
-FIXTURE_FOLDER = pathlib.Path("subdocs_fixtures")
-DATASET = {
-    "subdocs_fixtures/heading_1.docx": HEADING_1_VARS,
-    "subdocs_fixtures/heading_2.docx": HEADING_2_VARS,
-    "subdocs_fixtures/body_1.docx": BODY_1_VARS,
-}
-ORDERED_TEMPLATES = {
-    "subdocs_fixtures/heading_1.docx": 0,
-    "subdocs_fixtures/heading_2.docx": 1,
-    "subdocs_fixtures/body_1.docx": 2,
-}
-
-DATASETS = [(DATASET, ORDERED_TEMPLATES)]
-RESULT_FILENAME = "factory_result.docx"
 
 
 def main():
