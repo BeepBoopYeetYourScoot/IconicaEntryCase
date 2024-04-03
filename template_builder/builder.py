@@ -1,7 +1,6 @@
 import abc
-import os
 import pathlib
-from typing import Type, List, Iterable, Dict, Tuple, Union
+from typing import Type, List, Dict, Tuple, Union
 
 import docxtpl
 import loguru
@@ -9,9 +8,6 @@ from docxtpl import DocxTemplate
 from jinja2 import TemplateSyntaxError
 
 from template_builder.fixtures import (
-    HEADING_1_VARS,
-    HEADING_2_VARS,
-    BODY_1_VARS,
     DATASETS,
     RESULT_FILENAME,
 )
