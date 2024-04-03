@@ -75,12 +75,18 @@ class DocumentConnector:
         loguru.logger.debug(
             f"Connecting documents: \n {self._ordered_templates=}"
         )
-        templates = self._get_sorted_templates()
-        header_template, header_path = self._render_header(dataset, templates)
+        ordered_dataset = self.connect_dataset_and_ordering(dataset)
+        header_info = ordered_dataset.pop()
+        loguru.logger.debug(f"{header_info=}")
+        header_template = DocxTemplate(header_info[0])
 
-        rendered = self._render_templates(dataset, templates, header_path)
-        for template in rendered:
-            header_template.new_subdoc(template)
+        for template_data in ordered_dataset:
+            header_template.new_subdoc(template_data[0])
+
+        # info = {}
+        # for doc, data in dataset.items():
+        #     info.update(data)
+        # header_template.render(dataset["subdocs_fixtures/body_1.docx"])
         return header_template
 
     def _get_sorted_templates(self) -> List[str]:
@@ -90,28 +96,14 @@ class DocumentConnector:
         zipped.sort(key=lambda x: x[0])
         return [val for _, val in zipped]
 
-    def get_dataset_data_ordering(self, dataset: dict):
-        sorted_templates = self._get_sorted_templates()
-        for file in sorted_templates:
-            assert file in dataset
-        return {tmpl: dataset[tmpl] for tmpl in sorted_templates}
-
-    def _render_header(self, dataset, templates) -> Tuple[DocxTemplate, str]:
-        header_path = templates.copy().pop()
-        header_vars = dataset.copy().pop(header_path)
-        header_template = DocxTemplate(header_path)
-        header_template.render(header_vars)
-        return header_template, header_path
-
-    @staticmethod
-    def _render_templates(dataset, templates, header_path):
-        dataset = dataset.copy().pop(header_path)
-        templates = templates.copy().pop(header_path)
-        rendered = [
-            DocxTemplate(template).render(dataset.pop(template))
-            for template in templates
-        ]
-        return rendered
+    def connect_dataset_and_ordering(self, dataset):
+        ordered = self._ordered_templates.copy()
+        connected = []
+        for tmpl, data in dataset.items():
+            num = ordered.pop(tmpl)
+            connected.append((tmpl, data, num))
+        connected.sort(key=lambda x: x[2])
+        return connected
 
 
 class SynthaxValidator:
